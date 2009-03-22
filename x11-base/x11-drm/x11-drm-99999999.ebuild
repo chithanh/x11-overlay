@@ -13,7 +13,7 @@ inherit eutils x11 linux-mod autotools git
 IUSE_VIDEO_CARDS="
 	video_cards_mach64
 	video_cards_mga
-	video_cards_nouveau
+	video_cards_nv
 	video_cards_r128
 	video_cards_radeon
 	video_cards_savage
@@ -29,17 +29,13 @@ IUSE="${IUSE_VIDEO_CARDS} kernel_FreeBSD kernel_linux"
 RESTRICT="strip test"
 
 S="${WORKDIR}/drm"
-#PATCHVER="0.2"
+PATCHVER="0.2"
 PATCHDIR="${WORKDIR}/patch"
 EXCLUDED="${WORKDIR}/excluded"
 
 DESCRIPTION="DRM Kernel Modules for X11"
 HOMEPAGE="http://dri.sf.net"
-if [ -n "${PATCHVER}" ] ; then
-	SRC_URI="http://dev.gentoo.org/~dberkholz/distfiles/${P}-gentoo-${PATCHVER}.tar.bz2"
-else
-	SRC_URI=""
-fi
+SRC_URI="http://dev.gentoo.org/~dberkholz/distfiles/${P}-gentoo-${PATCHVER}.tar.bz2"
 
 SLOT="0"
 LICENSE="X11"
@@ -67,16 +63,14 @@ src_unpack() {
 	git_src_unpack
 	cd "${WORKDIR}"
 
-	if [ -n "${PATCHVER}" ] ; then
-		unpack ${P}-gentoo-${PATCHVER}.tar.bz2
+	unpack ${P}-gentoo-${PATCHVER}.tar.bz2
 
-		cd "${S}"
+	cd "${S}"
 
-		patch_prepare
+	patch_prepare
 
-		# Apply patches
-		EPATCH_SUFFIX="patch" epatch ${PATCHDIR}
-	fi
+	# Apply patches
+	EPATCH_SUFFIX="patch" epatch ${PATCHDIR}
 
 	# Substitute new directory under /lib/modules/${KV_FULL}
 	cd "${SRC_BUILD}"
@@ -116,8 +110,8 @@ src_install() {
 
 	dodoc "${S}/linux-core/README.drm"
 
-	dobin ../tests/dristat || die dobin failed
-	dobin ../tests/drmstat || die dobin failed
+	dobin dristat
+	dobin drmstat
 }
 
 pkg_postinst() {
@@ -171,8 +165,8 @@ set_vidcards() {
 			VIDCARDS="${VIDCARDS} mach64.${KV_OBJ}"
 		use video_cards_mga && \
 			VIDCARDS="${VIDCARDS} mga.${KV_OBJ}"
-		use video_cards_nouveau && \
-			VIDCARDS="${VIDCARDS} nouveau.${KV_OBJ}"
+		use video_cards_nv && \
+			VIDCARDS="${VIDCARDS} nv.${KV_OBJ} nouveau.${KV_OBJ}"
 		use video_cards_r128 && \
 			VIDCARDS="${VIDCARDS} r128.${KV_OBJ}"
 		use video_cards_radeon && \
@@ -278,6 +272,11 @@ src_compile_linux() {
 	then
 		ewarn "Please disable in-kernel DRM support to use this package."
 	fi
+
+	# LINUXDIR is needed to allow Makefiles to find kernel release.
+	cd "${SRC_BUILD}"
+	emake LINUXDIR="${KERNEL_DIR}" dristat || die "Building dristat failed."
+	emake LINUXDIR="${KERNEL_DIR}" drmstat || die "Building drmstat failed."
 }
 
 src_compile_freebsd() {
