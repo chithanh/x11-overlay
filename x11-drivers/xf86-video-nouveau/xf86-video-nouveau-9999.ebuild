@@ -15,7 +15,7 @@ HOMEPAGE="http://nouveau.freedesktop.org/"
 SRC_URI=""
 
 LICENSE="MIT"
-KEYWORDS=""
+KEYWORDS="~amd64 ~x86"
 IUSE=""
 
 COMMON_DEPEND=">=x11-base/xorg-server-1.5.3[-minimal]"
@@ -32,5 +32,5 @@ DEPEND="${COMMON_DEPEND}
 
 # need x11-base/x11-drm until nouveau drm enters the kernel
 RDEPEND="${COMMON_DEPEND}
-	>=x11-base/x11-drm-20090320[video_cards_nv]"
+	>=x11-base/x11-drm-99999999[video_cards_nouveau]"
 
