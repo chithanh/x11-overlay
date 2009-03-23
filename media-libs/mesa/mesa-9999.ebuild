@@ -2,24 +2,38 @@
 # Distributed under the terms of the GNU General Public License v2
 # $Header: /var/cvsroot/gentoo-x86/media-libs/mesa/mesa-7.0.2.ebuild,v 1.6 2007/11/16 18:16:30 dberkholz Exp $
 
+EAPI="2"
+
 EGIT_REPO_URI="git://anongit.freedesktop.org/mesa/mesa"
 
-inherit autotools multilib flag-o-matic git portability
+if [[ ${PV} = 9999* ]]; then
+	git_eclass="git"
+	drm_depend=">=x11-libs/libdrm-9999"
+else
+	drm_depend=">=x11-libs/libdrm-2.4.3"
+fi
+
+inherit autotools multilib flag-o-matic ${git_eclass} portability
 
 OPENGL_DIR="xorg-x11"
 
 MY_PN="${PN/m/M}"
-MY_P="${MY_PN}-${PV//_}"
+MY_P="${MY_PN}-${PV/_/-}"
 MY_SRC_P="${MY_PN}Lib-${PV/_/-}"
 DESCRIPTION="OpenGL-like graphic library for Linux"
 HOMEPAGE="http://mesa3d.sourceforge.net/"
+
+SRC_PATCHES="mirror://gentoo/${P}-gentoo-patches-01.tar.bz2"
 if [[ $PV = *_rc* ]]; then
-	SRC_URI="http://www.mesa3d.org/beta/${MY_SRC_P}.tar.gz"
-elif [[ $PV = 9999 ]]; then
+	SRC_URI="http://www.mesa3d.org/beta/${MY_SRC_P}.tar.gz
+		${SRC_PATCHES}"
+elif [[ $PV = 9999* ]]; then
 	SRC_URI=""
 else
-	SRC_URI="mirror://sourceforge/mesa3d/${MY_SRC_P}.tar.bz2"
+	SRC_URI="mirror://sourceforge/mesa3d/${MY_SRC_P}.tar.bz2
+		${SRC_PATCHES}"
 fi
+
 LICENSE="LGPL-2"
 SLOT="0"
 KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~mips ~ppc ~ppc64 ~sh ~sparc ~x86 ~x86-fbsd"
@@ -46,15 +60,15 @@ IUSE="${IUSE_VIDEO_CARDS}
 	xcb
 	kernel_FreeBSD"
 
-RDEPEND="app-admin/eselect-opengl
+RDEPEND="${drm_depend}
+	app-admin/eselect-opengl
 	dev-libs/expat
-	x11-libs/libX11
+	x11-libs/libX11[xcb=]
 	x11-libs/libXext
 	x11-libs/libXxf86vm
 	x11-libs/libXi
 	x11-libs/libXmu
 	x11-libs/libXdamage
-	>=x11-libs/libdrm-9999
 	x11-libs/libICE
 	motif? ( x11-libs/openmotif )
 	doc? ( app-doc/opengl-manpages )
@@ -66,7 +80,7 @@ DEPEND="${RDEPEND}
 	x11-proto/inputproto
 	x11-proto/xextproto
 	!hppa? ( x11-proto/xf86driproto )
-	x11-proto/dri2proto
+	>=x11-proto/dri2proto-1.99.3
 	x11-proto/xf86vidmodeproto
 	>=x11-proto/glproto-1.4.8
 	motif? ( x11-proto/printproto )"
@@ -76,14 +90,6 @@ S="${WORKDIR}/${MY_P}"
 # Think about: ggi, svga, fbcon, no-X configs
 
 pkg_setup() {
-	if use xcb; then
-		if ! built_with_use x11-libs/libX11 xcb; then
-			msg="You must build libX11 with xcb enabled."
-			eerror ${msg}
-			die ${msg}
-		fi
-	fi
-
 	if use debug; then
 		append-flags -g
 	fi
@@ -98,9 +104,14 @@ pkg_setup() {
 }
 
 src_unpack() {
-	git_src_unpack
-	cd "${S}"
+	[[ $PV = 9999* ]] && git_src_unpack || unpack ${A}
+}
 
+src_prepare() {
+	# apply patches
+	[[ $PV = 9999* ]] || \
+		EPATCH_FORCE="yes" EPATCH_SOURCE="${WORKDIR}/patches" \
+		EPATCH_SUFFIX="patch" epatch
 	# FreeBSD 6.* doesn't have posix_memalign().
 	[[ ${CHOST} == *-freebsd6.* ]] && sed -i -e "s/-DHAVE_POSIX_MEMALIGN//" configure.ac
 
@@ -113,7 +124,7 @@ src_unpack() {
 	eautoreconf
 }
 
-src_compile() {
+src_configure() {
 	local myconf
 
 	# This is where we might later change to build xlib/osmesa
@@ -141,10 +152,10 @@ src_compile() {
 	myconf="${myconf} --with-dri-drivers=${DRI_DRIVERS}"
 
 	# Deactivate assembly code for pic build
-	myconf="${myconf} $(use_enable pic asm)"
+	myconf="${myconf} $(use_enable !pic asm)"
 
 	# Sparc assembly code is not working
-	myconf="${myconf} $(use_enable sparc asm)"
+	myconf="${myconf} $(use_enable !sparc asm)"
 
 	myconf="${myconf} --disable-glut"
 
@@ -152,25 +163,20 @@ src_compile() {
 
 	myconf="${myconf} $(use_enable xcb)"
 
+	myconf="${myconf} $(use_enable motif glw)"
+
 	# Get rid of glut includes
 	rm -f "${S}"/include/GL/glut*h
 
 	# Get rid of glew includes
-	rm -f "${S}"/usr/include/GL/glew.h
-	rm -f "${S}"/usr/include/GL/glxew.h
-	rm -f "${S}"/usr/include/GL/wglew.h
+	rm -f "${S}"/usr/include/GL/{glew,glxew,wglew}.h
 
-	myconf="${myconf} $(use_enable motif glw)"
-
-	econf ${myconf} || die
-	emake || die
+	econf ${myconf}
 }
 
 src_install() {
 	dodir /usr
-	emake \
-		DESTDIR="${D}" \
-		install || die "Installation failed"
+	emake DESTDIR="${D}" install || die "Installation failed"
 
 	if ! use motif; then
 		rm "${D}"/usr/include/GL/GLwMDrawA.h
