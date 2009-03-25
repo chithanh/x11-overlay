@@ -6,7 +6,9 @@ EAPI="2"
 
 EGIT_REPO_URI="git://anongit.freedesktop.org/mesa/mesa"
 
-[[ ${PV} = 9999* ]] && GIT_ECLASS="git"
+if [[ ${PV} = 9999* ]]; then
+	GIT_ECLASS="git"
+fi
 
 inherit autotools multilib flag-o-matic ${GIT_ECLASS} portability
 
@@ -18,12 +20,12 @@ MY_SRC_P="${MY_PN}Lib-${PV/_/-}"
 DESCRIPTION="OpenGL-like graphic library for Linux"
 HOMEPAGE="http://mesa3d.sourceforge.net/"
 
-#SRC_PATCHES="mirror://gentoo/${P}-gentoo-patches-01.tar.bz2"
+SRC_PATCHES=""
 if [[ $PV = *_rc* ]]; then
 	SRC_URI="http://www.mesa3d.org/beta/${MY_SRC_P}.tar.gz
 		${SRC_PATCHES}"
 elif [[ $PV = 9999* ]]; then
-	SRC_URI="${SRC_PATCHES}"
+	SRC_URI=""
 else
 	SRC_URI="mirror://sourceforge/mesa3d/${MY_SRC_P}.tar.bz2
 		${SRC_PATCHES}"
@@ -33,15 +35,7 @@ LICENSE="LGPL-2"
 SLOT="0"
 KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~mips ~ppc ~ppc64 ~sh ~sparc ~x86 ~x86-fbsd"
 
-if [[ ${PV} = 9999* ]]; then
-	EXPERIMENTAL="true"
-	IUSE_VIDEO_CARDS_UNSTABLE="video_cards_nouveau"
-	IUSE_UNSTABLE="gallium"
-	# User can also specify branch by simply adding MESA_LIVE_BRANCH="blesmrt"
-	# to the make.conf, where blesmrt is desired branch.
-	[[ -z ${MESA_LIVE_BRANCH} ]] || EGIT_BRANCH="${MESA_LIVE_BRANCH}"
-fi
-IUSE_VIDEO_CARDS="${IUSE_VIDEO_CARDS_UNSTABLE}
+IUSE_VIDEO_CARDS="
 	video_cards_intel
 	video_cards_mach64
 	video_cards_mga
@@ -56,44 +50,37 @@ IUSE_VIDEO_CARDS="${IUSE_VIDEO_CARDS_UNSTABLE}
 	video_cards_tdfx
 	video_cards_trident
 	video_cards_via"
-IUSE="${IUSE_VIDEO_CARDS} ${IUSE_UNSTABLE}
+IUSE="${IUSE_VIDEO_CARDS} ${IUSE_VIDEO_CARDS_UNSTABLE} ${IUSE_UNSTABLE}
 	debug doc motif nptl pic xcb kernel_FreeBSD"
 
-# keep correct libdrm and dri2proto dep
-# keep blocks in rdepend for binpkg
-RDEPEND="!<=x11-base/xorg-x11-6.9
-	!<=x11-proto/xf86driproto-2.0.3
+RDEPEND=">=x11-libs/libdrm-2.4.3
 	app-admin/eselect-opengl
 	dev-libs/expat
-	>=x11-libs/libdrm-9999
-	x11-libs/libICE
 	x11-libs/libX11[xcb?]
-	x11-libs/libXdamage
 	x11-libs/libXext
+	x11-libs/libXxf86vm
 	x11-libs/libXi
 	x11-libs/libXmu
-	x11-libs/libXxf86vm
+	x11-libs/libXdamage
+	x11-libs/libICE
 	motif? ( x11-libs/openmotif )
 	doc? ( app-doc/opengl-manpages )
-"
+	!<=x11-base/xorg-x11-6.9"
 DEPEND="${RDEPEND}
+	!<=x11-proto/xf86driproto-2.0.3
 	dev-util/pkgconfig
 	x11-misc/makedepend
-	>=x11-proto/dri2proto-1.99.3
-	>=x11-proto/glproto-1.4.8
 	x11-proto/inputproto
 	x11-proto/xextproto
-	x11-proto/xf86vidmodeproto
 	!hppa? ( x11-proto/xf86driproto )
-	motif? ( x11-proto/printproto )
-"
+	>=x11-proto/dri2proto-1.99.3
+	x11-proto/xf86vidmodeproto
+	>=x11-proto/glproto-1.4.8
+	motif? ( x11-proto/printproto )"
 
 S="${WORKDIR}/${MY_P}"
 
 # Think about: ggi, svga, fbcon, no-X configs
-
-# another thinking: how about not compile all intel/ati implementations when we
-# can detect graphic card and choose only the required impl.
 
 pkg_setup() {
 	if use debug; then
@@ -115,7 +102,7 @@ src_unpack() {
 
 src_prepare() {
 	# apply patches
-	if [[ -n ${SRC_PATCHES} ]]; then
+	if ! [[ $PV = 9999* ]] && [[ -n ${SRC_PATCHES} ]]; then
 		EPATCH_FORCE="yes" \
 		EPATCH_SOURCE="${WORKDIR}/patches" \
 		EPATCH_SUFFIX="patch" \
@@ -159,33 +146,13 @@ src_configure() {
 	driver_enable video_cards_trident trident
 	driver_enable video_cards_via unichrome
 
-	# all live (experimental) stuff is wrapped around with experimental variable
-	# so the users cant get to this parts even with enabled useflags (downgrade
-	# from live to stable for example)
-	if [[ -n ${EXPERIMENTAL} ]]; then
-		# nouveau works only with gallium and intel, radeon, radeonhd can use
-		# gallium as alternative implementation (NOTE: THIS IS EXPERIMENTAL)
-		if use video_cards_nouveau && ! use gallium ; then
-			elog "Nouveau driver is availible only via gallium interface."
-			elog "Enable gallium useflag if you want to use nouveau."
-			echo
-		fi
-		myconf="${myconf} $(use_enable gallium)"
-		if use gallium; then
-			elog "Warning gallium interface is highly experimental so use"
-			elog "it only if you feel really really brave."
-			echo
-			myconf="${myconf}
-				$(use_enable video_cards_nouveau gallium-nouveau)
-				$(use_enable video_cards_intel gallium-intel)
-				$(use_enable video_cards_radeon gallium-radeon)
-				$(use_enable video_cards_radeonhd gallium-radeon)"
-		fi
-	fi
+	# Set drivers to everything on which we ran driver_enable()
+	myconf="${myconf} --with-dri-drivers=${DRI_DRIVERS}"
 
 	# Deactivate assembly code for pic build
-	# Sparc assembly code is not working
 	myconf="${myconf} $(use_enable !pic asm)"
+
+	# Sparc assembly code is not working
 	myconf="${myconf} $(use_enable !sparc asm)"
 
 	# --with-driver=dri|xlib|osmesa ; might get changed later to something
@@ -199,7 +166,6 @@ src_configure() {
 		$(use_enable motif) \
 		$(use_enable nptl glx-tls) \
 		$(use_enable xcb) \
-		--with-dri-drivers=${DRI_DRIVERS} \
 		${myconf}
 }
 
@@ -217,7 +183,8 @@ src_install() {
 
 	# Install libtool archives
 	insinto /usr/$(get_libdir)
-	doins "${FILESDIR}"/lib/libGLU.la || die "doins libGLU.la failed"
+	# (#67729) Needs to be lib, not $(get_libdir)
+	doins "${FILESDIR}"/lib/libGLU.la
 	sed \
 		-e "s:\${libdir}:$(get_libdir):g" \
 		"${FILESDIR}"/lib/libGL.la \
@@ -230,8 +197,7 @@ src_install() {
 	sed -i \
 		-e 's:-ldl:'$(dlopen_lib)':g' \
 		"${D}"/usr/$(get_libdir)/libGLU.la \
-		"${D}"/usr/$(get_libdir)/opengl/xorg-x11/lib/libGL.la \
-		|| die "sed dlopen failed"
+		"${D}"/usr/$(get_libdir)/opengl/xorg-x11/lib/libGL.la
 
 	# libGLU doesn't get the plain .so symlink either
 	#dosym libGLU.so.1 /usr/$(get_libdir)/libGLU.so
@@ -249,17 +215,17 @@ fix_opengl_symlinks() {
 	local LINK
 	for LINK in $(find "${D}"/usr/$(get_libdir) \
 		-name libGL\.* -type l); do
-		rm -f ${LINK} || die "Removing symlink ${LINK} failed."
+		rm -f ${LINK}
 	done
 	# Create required symlinks
 	if [[ ${CHOST} == *-freebsd* ]]; then
 		# FreeBSD doesn't use major.minor versioning, so the library is only
 		# libGL.so.1 and no libGL.so.1.2 is ever used there, thus only create
 		# libGL.so symlink and leave libGL.so.1 being the real thing
-		dosym libGL.so.1 /usr/$(get_libdir)/libGL.so || die "dosym failed"
+		dosym libGL.so.1 /usr/$(get_libdir)/libGL.so
 	else
-		dosym libGL.so.1.2 /usr/$(get_libdir)/libGL.so || die "dosym failed"
-		dosym libGL.so.1.2 /usr/$(get_libdir)/libGL.so.1 || die "dosym failed"
+		dosym libGL.so.1.2 /usr/$(get_libdir)/libGL.so
+		dosym libGL.so.1.2 /usr/$(get_libdir)/libGL.so.1
 	fi
 }
 
@@ -267,8 +233,10 @@ dynamic_libgl_install() {
 	# next section is to setup the dynamic libGL stuff
 	ebegin "Moving libGL and friends for dynamic switching"
 		dodir /usr/$(get_libdir)/opengl/${OPENGL_DIR}/{lib,extensions,include}
-		local x 
-		for x in "${D}"/usr/$(get_libdir)/libGL.{la,a,so*}; do
+		local x=""
+		for x in "${D}"/usr/$(get_libdir)/libGL.so* \
+			"${D}"/usr/$(get_libdir)/libGL.la \
+			"${D}"/usr/$(get_libdir)/libGL.a; do
 			if [ -f ${x} -o -L ${x} ]; then
 				# libGL.a cause problems with tuxracer, etc
 				mv -f ${x} "${D}"/usr/$(get_libdir)/opengl/${OPENGL_DIR}/lib
