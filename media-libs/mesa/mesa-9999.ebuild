@@ -6,7 +6,15 @@ EAPI="2"
 
 EGIT_REPO_URI="git://anongit.freedesktop.org/mesa/mesa"
 
-[[ ${PV} = 9999* ]] && GIT_ECLASS="git"
+if [[ ${PV} = 9999* ]]; then
+	GIT_ECLASS="git"
+	EXPERIMENTAL="true"
+	IUSE_VIDEO_CARDS_UNSTABLE="video_cards_nouveau"
+	IUSE_UNSTABLE="gallium"
+	# User can also specify branch by simply adding MESA_LIVE_BRANCH="blesmrt"
+	# to the make.conf, where blesmrt is desired branch.
+	[[ -z ${MESA_LIVE_BRANCH} ]] || EGIT_BRANCH="${MESA_LIVE_BRANCH}"
+fi
 
 inherit autotools multilib flag-o-matic ${GIT_ECLASS} portability
 
@@ -33,14 +41,6 @@ LICENSE="LGPL-2"
 SLOT="0"
 KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~mips ~ppc ~ppc64 ~sh ~sparc ~x86 ~x86-fbsd"
 
-if [[ ${PV} = 9999* ]]; then
-	EXPERIMENTAL="true"
-	IUSE_VIDEO_CARDS_UNSTABLE="video_cards_nouveau"
-	IUSE_UNSTABLE="gallium"
-	# User can also specify branch by simply adding MESA_LIVE_BRANCH="blesmrt"
-	# to the make.conf, where blesmrt is desired branch.
-	[[ -z ${MESA_LIVE_BRANCH} ]] || EGIT_BRANCH="${MESA_LIVE_BRANCH}"
-fi
 IUSE_VIDEO_CARDS="${IUSE_VIDEO_CARDS_UNSTABLE}
 	video_cards_intel
 	video_cards_mach64
@@ -137,13 +137,9 @@ src_configure() {
 
 	# Configurable DRI drivers
 	driver_enable swrast
-	driver_enable video_cards_intel i810 i915 i965
 	driver_enable video_cards_mach64 mach64
 	driver_enable video_cards_mga mga
 	driver_enable video_cards_r128 r128
-	# ATI has two implementations as video_cards that uses same stuff
-	driver_enable video_cards_radeon radeon r200 r300
-	driver_enable video_cards_radeonhd r300
 	driver_enable video_cards_s3virge s3v
 	driver_enable video_cards_savage savage
 	driver_enable video_cards_sis sis
@@ -159,24 +155,36 @@ src_configure() {
 		# nouveau works only with gallium and intel, radeon, radeonhd can use
 		# gallium as alternative implementation (NOTE: THIS IS EXPERIMENTAL)
 		if use video_cards_nouveau && ! use gallium ; then
-			elog "Nouveau driver is availible only via gallium interface."
+			elog "Nouveau driver is available only via gallium interface."
 			elog "Enable gallium useflag if you want to use nouveau."
 			echo
 		fi
 		# state trackers, for now enable the one i want
 		# think about this bit more...
-		myconf="${myconf} $(use_enable gallium)
-			--with-state-trackers=glx,dri2,egl"
+		myconf="${myconf} $(use_enable gallium)"
 		if use gallium; then
 			elog "Warning gallium interface is highly experimental so use"
 			elog "it only if you feel really really brave."
 			echo
 			myconf="${myconf}
+				--with-state-trackers=glx,dri2,egl
 				$(use_enable video_cards_nouveau gallium-nouveau)
 				$(use_enable video_cards_intel gallium-intel)
 				$(use_enable video_cards_radeon gallium-radeon)
 				$(use_enable video_cards_radeonhd gallium-radeon)"
+		else
+			# not using gallium
+			driver_enable video_cards_intel i810 i915 i965
+			# ATI has two implementations as video_cards
+			driver_enable video_cards_radeon radeon r200 r300
+			driver_enable video_cards_radeonhd r300
 		fi
+	else
+		# backcompat, remove when gallium moves out of experimental
+		driver_enable video_cards_intel i810 i915 i965
+		# ATI has two implementations as video_cards
+		driver_enable video_cards_radeon radeon r200 r300
+		driver_enable video_cards_radeonhd r300
 	fi
 
 	# Deactivate assembly code for pic build
