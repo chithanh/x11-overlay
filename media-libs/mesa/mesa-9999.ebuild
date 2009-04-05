@@ -65,6 +65,7 @@ RDEPEND="!<=x11-base/xorg-x11-6.9
 	!<=x11-proto/xf86driproto-2.0.3
 	app-admin/eselect-opengl
 	dev-libs/expat
+	>=media-libs/glew-1.5.1
 	>=x11-libs/libdrm-9999
 	x11-libs/libICE
 	x11-libs/libX11[xcb?]
@@ -124,10 +125,7 @@ src_prepare() {
 
 	eautoreconf
 
-	# remove unwanted header files
-	# Get rid of glut include
-	rm -f "${S}"/include/GL/glut.h || die "Removing glut include failed."
-	# Get rid of glew includes
+	# remove glew headers. We preffer to use system ones
 	rm -f "${S}"/include/GL/{glew,glxew,wglew}.h \
 		|| die "Removing glew includes failed."
 }
@@ -137,9 +135,13 @@ src_configure() {
 
 	# Configurable DRI drivers
 	driver_enable swrast
+	driver_enable video_cards_intel i810 i915 i965
 	driver_enable video_cards_mach64 mach64
 	driver_enable video_cards_mga mga
 	driver_enable video_cards_r128 r128
+	# ATI has two implementations as video_cards
+	driver_enable video_cards_radeon radeon r200 r300
+	driver_enable video_cards_radeonhd r300
 	driver_enable video_cards_s3virge s3v
 	driver_enable video_cards_savage savage
 	driver_enable video_cards_sis sis
@@ -165,26 +167,18 @@ src_configure() {
 		if use gallium; then
 			elog "Warning gallium interface is highly experimental so use"
 			elog "it only if you feel really really brave."
+			elog
+			elog "Intel: works only i915."
+			elog "Nouveau: only available implementation, so no other choice"
+			elog "Radeon: not working, disabled."
 			echo
 			myconf="${myconf}
 				--with-state-trackers=glx,dri2,egl
 				$(use_enable video_cards_nouveau gallium-nouveau)
-				$(use_enable video_cards_intel gallium-intel)
-				$(use_enable video_cards_radeon gallium-radeon)
-				$(use_enable video_cards_radeonhd gallium-radeon)"
-		else
-			# not using gallium
-			driver_enable video_cards_intel i810 i915 i965
-			# ATI has two implementations as video_cards
-			driver_enable video_cards_radeon radeon r200 r300
-			driver_enable video_cards_radeonhd r300
+				$(use_enable video_cards_intel gallium-intel)"
+				#$(use_enable video_cards_radeon gallium-radeon)
+				#$(use_enable video_cards_radeonhd gallium-radeon)"
 		fi
-	else
-		# backcompat, remove when gallium moves out of experimental
-		driver_enable video_cards_intel i810 i915 i965
-		# ATI has two implementations as video_cards
-		driver_enable video_cards_radeon radeon r200 r300
-		driver_enable video_cards_radeonhd r300
 	fi
 
 	# Deactivate assembly code for pic build
@@ -211,7 +205,28 @@ src_install() {
 	dodir /usr
 	emake DESTDIR="${D}" install || die "Installation failed"
 
-	make_libgl_dynamicaly_installed
+	# Remove redundant headers
+	# GLUT thing
+	rm -f "${D}"/usr/include/GL/glut*.h || die "Removing glut include failed."
+
+	# Move libGL and others from /usr/lib to /usr/lib/opengl/blah/lib
+	# because user can eselect desired GL provider.
+	ebegin "Moving libGL and friends for dynamic switching"
+		dodir /usr/$(get_libdir)/opengl/${OPENGL_DIR}/{lib,extensions,include}
+		local x
+		for x in "${D}"/usr/$(get_libdir)/libGL.{la,a,so*}; do
+			if [ -f ${x} -o -L ${x} ]; then
+				mv -f ${x} "${D}"/usr/$(get_libdir)/opengl/${OPENGL_DIR}/lib \
+					|| die "Failed to move ${x}"
+			fi
+		done
+		for x in "${D}"/usr/include/GL/{gl.h,glx.h,glext.h,glxext.h}; do
+			if [ -f ${x} -o -L ${x} ]; then
+				mv -f ${x} "${D}"/usr/$(get_libdir)/opengl/${OPENGL_DIR}/include \
+					|| die "Failed to move ${x}"
+			fi
+		done
+	eend $?
 
 	# Install libtool archives
 	insinto /usr/$(get_libdir)
@@ -237,25 +252,6 @@ pkg_postinst() {
 	# Switch to the xorg implementation.
 	echo
 	eselect opengl set --use-old ${OPENGL_DIR}
-}
-
-make_libgl_dynamicaly_installed() {
-	# Move libGL and others from /usr/lib to /usr/lib/opengl/blah/lib
-	# because user can eselect desired GL provider.
-	ebegin "Moving libGL and friends for dynamic switching"
-		dodir /usr/$(get_libdir)/opengl/${OPENGL_DIR}/{lib,extensions,include}
-		local x 
-		for x in "${D}"/usr/$(get_libdir)/libGL.{la,a,so*}; do
-			if [ -f ${x} -o -L ${x} ]; then
-				mv -f ${x} "${D}"/usr/$(get_libdir)/opengl/${OPENGL_DIR}/lib
-			fi
-		done
-		for x in "${D}"/usr/include/GL/{gl.h,glx.h,glext.h,glxext.h}; do
-			if [ -f ${x} -o -L ${x} ]; then
-				mv -f ${x} "${D}"/usr/$(get_libdir)/opengl/${OPENGL_DIR}/include
-			fi
-		done
-	eend 0
 }
 
 # $1 - VIDEO_CARDS flag
