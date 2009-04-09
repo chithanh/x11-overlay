@@ -8,7 +8,6 @@
 inherit autotools x-modular
 
 EGIT_REPO_URI="git://anongit.freedesktop.org/git/mesa/drm"
-EGIT_BOOTSTRAP="eautoreconf"
 
 DESCRIPTION="X.Org libdrm library"
 HOMEPAGE="http://dri.freedesktop.org/"
@@ -18,9 +17,6 @@ KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~mips ~ppc ~ppc64 ~s390 ~sh ~sparc ~x86
 
 IUSE=""
 RESTRICT="test" # see bug #236845
-
-RDEPEND=""
-DEPEND="${RDEPEND}"
 
 CONFIGURE_OPTIONS="--enable-udev --enable-nouveau-experimental-api"
 
